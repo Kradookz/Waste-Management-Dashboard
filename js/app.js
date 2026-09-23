@@ -434,10 +434,13 @@ const wasteChart =
                             bin1History,
 
                         borderColor:
-                            "#27AE60",
+                            "#2E86DE",
 
                         backgroundColor:
-                            "#27AE60",
+                            "#2E86DE",
+
+                        borderDash:
+                            [6, 4],
 
                         tension:
                             0
@@ -451,10 +454,10 @@ const wasteChart =
                             bin2History,
 
                         borderColor:
-                            "#F2C94C",
+                            "#E67E22",
 
                         backgroundColor:
-                            "#F2C94C",
+                            "#E67E22",
 
                         tension:
                             0
