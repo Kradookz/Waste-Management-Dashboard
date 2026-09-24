@@ -745,14 +745,6 @@ onValue(
 
             }
 
-
-            // ================= Update =================
-
-            document.getElementById(
-                "battery1-update"
-            ).textContent =
-                "● Realtime";
-
         }
 
 
@@ -944,14 +936,6 @@ onValue(
                     battery2Status;
 
             }
-
-
-            // ================= Update =================
-
-            document.getElementById(
-                "battery2-update"
-            ).textContent =
-                "● Realtime";
 
         }
 
