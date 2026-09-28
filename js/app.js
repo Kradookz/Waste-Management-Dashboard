@@ -83,73 +83,160 @@ const OFFLINE_THRESHOLD_MS = 20 * 1000; // 20 วินาที (ชั่ว�
 
 
 // ============================================================
-// NOTIFICATION QUEUE
+// NOTIFICATION SYSTEM
+// - แจ้งเตือนค้างไว้จนกว่า user จะกดปิด (ปุ่ม ×)
+// - อันใหม่แทรกด้านบน ดันอันเก่าลงไป ไม่ทับกัน
+// - ปุ่มกระดิ่ง เปิดดูประวัติแจ้งเตือนที่ผ่านมา
 // ============================================================
 
-// เก็บ Notification ที่รอแสดง
+const NOTIFICATION_STORAGE_KEY = "wasteDashboardNotifications";
 
-const notificationQueue = [];
-
-
-// ป้องกันไม่ให้ Notification หลายอันแสดงพร้อมกัน
-
-let notificationShowing = false;
+const NOTIFICATION_HISTORY_LIMIT = 50;
 
 
-// ============================================================
-// NOTIFICATION FUNCTION
-// ============================================================
+// ประวัติแจ้งเตือน (ใหม่สุดอยู่ต้น array)
+// เก็บลง localStorage ของเบราว์เซอร์ เพื่อไม่ให้หายตอนรีเฟรชหน้า
 
-function showNotification(message) {
+let notificationHistory = [];
 
-    // เพิ่มข้อความเข้า Queue
+try {
 
-    notificationQueue.push(message);
+    const saved =
+        localStorage.getItem(
+            NOTIFICATION_STORAGE_KEY
+        );
 
 
-    // เริ่มประมวลผล Queue
+    if (saved) {
 
-    processNotificationQueue();
+        const parsed =
+            JSON.parse(saved);
+
+
+        if (Array.isArray(parsed)) {
+
+            notificationHistory =
+                parsed;
+
+        }
+
+    }
+
+} catch (error) {
+
+    console.warn(
+        "อ่านประวัติแจ้งเตือนจาก localStorage ไม่ได้:",
+        error
+    );
+
+    notificationHistory = [];
 
 }
 
 
-function processNotificationQueue() {
+// จำนวนแจ้งเตือนที่ยังไม่ได้เปิดดูในแผงประวัติ (โชว์เป็นเลขบนกระดิ่ง)
 
-    // ถ้ากำลังแสดง Notification อยู่
-    // หรือไม่มีข้อความใน Queue
-    // ให้หยุดก่อน
+let unreadNotificationCount = 0;
+
+
+function saveNotificationHistory() {
+
+    try {
+
+        localStorage.setItem(
+            NOTIFICATION_STORAGE_KEY,
+            JSON.stringify(notificationHistory)
+        );
+
+    } catch (error) {
+
+        console.warn(
+            "บันทึกประวัติแจ้งเตือนไม่ได้:",
+            error
+        );
+
+    }
+
+}
+
+
+// เดาประเภทจากอีโมจิหน้าข้อความ เพื่อกำหนดสีแถบข้าง
+// (จะได้ไม่ต้องแก้จุดเรียก showNotification เดิมทุกที่)
+
+function getNotificationType(message) {
 
     if (
-        notificationShowing ||
-        notificationQueue.length === 0
+        message.includes("🚨") ||
+        message.includes("🔴")
     ) {
 
-        return;
+        return "danger";
 
     }
 
 
-    const notification =
-        document.getElementById(
-            "notification"
-        );
-
-    const text =
-        document.getElementById(
-            "notification-text"
-        );
-
-
-    // ตรวจสอบ HTML
-
     if (
-        !notification ||
-        !text
+        message.includes("⚠️") ||
+        message.includes("🟡")
     ) {
+
+        return "warning";
+
+    }
+
+
+    if (message.includes("🟢")) {
+
+        return "success";
+
+    }
+
+
+    return "info";
+
+}
+
+
+function formatNotificationTime(timestamp) {
+
+    return new Date(timestamp).toLocaleString(
+        "en-GB",
+        {
+
+            day: "2-digit",
+
+            month: "2-digit",
+
+            year: "numeric",
+
+            hour: "2-digit",
+
+            minute: "2-digit",
+
+            second: "2-digit",
+
+            hour12: false
+
+        }
+    );
+
+}
+
+
+// ---------------- Toast (แจ้งเตือนที่เด้งขึ้นมา) ----------------
+
+function createToast(message, type, timestamp) {
+
+    const container =
+        document.getElementById(
+            "toast-container"
+        );
+
+
+    if (!container) {
 
         console.error(
-            "Notification element not found!"
+            "Toast container not found!"
         );
 
         return;
@@ -157,23 +244,319 @@ function processNotificationQueue() {
     }
 
 
-    // ดึงข้อความแรกออกจาก Queue
+    const toast =
+        document.createElement("div");
 
-    const message =
-        notificationQueue.shift();
+    toast.className =
+        "toast toast-" + type;
 
 
-    // แสดงข้อความ
+    const body =
+        document.createElement("div");
+
+    body.className =
+        "toast-body";
+
+
+    const text =
+        document.createElement("div");
+
+    text.className =
+        "toast-text";
 
     text.textContent =
         message;
 
-    notification.style.display =
-        "block";
+
+    const time =
+        document.createElement("div");
+
+    time.className =
+        "toast-time";
+
+    time.textContent =
+        formatNotificationTime(timestamp);
 
 
-    notificationShowing =
-        true;
+    body.appendChild(text);
+
+    body.appendChild(time);
+
+
+    const closeButton =
+        document.createElement("button");
+
+    closeButton.className =
+        "toast-close";
+
+    closeButton.textContent =
+        "×";
+
+    closeButton.setAttribute(
+        "aria-label",
+        "Close notification"
+    );
+
+    closeButton.addEventListener(
+        "click",
+        () => {
+
+            toast.remove();
+
+        }
+    );
+
+
+    toast.appendChild(body);
+
+    toast.appendChild(closeButton);
+
+
+    // prepend = แทรกไว้บนสุด ดันอันเก่าลงไปข้างล่าง
+
+    container.prepend(toast);
+
+}
+
+
+// ---------------- Bell + History panel ----------------
+
+function updateBellBadge() {
+
+    const badge =
+        document.getElementById(
+            "bell-badge"
+        );
+
+
+    if (!badge) {
+
+        return;
+
+    }
+
+
+    if (unreadNotificationCount > 0) {
+
+        badge.textContent =
+            unreadNotificationCount > 99
+                ? "99+"
+                : String(unreadNotificationCount);
+
+        badge.style.display =
+            "flex";
+
+    } else {
+
+        badge.style.display =
+            "none";
+
+    }
+
+}
+
+
+function renderNotificationHistory() {
+
+    const list =
+        document.getElementById(
+            "notif-list"
+        );
+
+
+    if (!list) {
+
+        return;
+
+    }
+
+
+    list.innerHTML = "";
+
+
+    if (notificationHistory.length === 0) {
+
+        const empty =
+            document.createElement("div");
+
+        empty.className =
+            "notif-empty";
+
+        empty.textContent =
+            "ยังไม่มีการแจ้งเตือน";
+
+        list.appendChild(empty);
+
+        return;
+
+    }
+
+
+    notificationHistory.forEach((item) => {
+
+        const row =
+            document.createElement("div");
+
+        row.className =
+            "notif-item notif-" + item.type;
+
+
+        const message =
+            document.createElement("div");
+
+        message.className =
+            "notif-item-text";
+
+        message.textContent =
+            item.message;
+
+
+        const time =
+            document.createElement("div");
+
+        time.className =
+            "notif-item-time";
+
+        time.textContent =
+            formatNotificationTime(item.timestamp);
+
+
+        row.appendChild(message);
+
+        row.appendChild(time);
+
+        list.appendChild(row);
+
+    });
+
+}
+
+
+function isNotificationPanelOpen() {
+
+    const panel =
+        document.getElementById(
+            "notif-panel"
+        );
+
+
+    return (
+        !!panel &&
+        panel.style.display !== "none" &&
+        panel.style.display !== ""
+    );
+
+}
+
+
+function openNotificationPanel() {
+
+    const panel =
+        document.getElementById(
+            "notif-panel"
+        );
+
+
+    if (!panel) {
+
+        return;
+
+    }
+
+
+    renderNotificationHistory();
+
+    panel.style.display =
+        "flex";
+
+
+    // เปิดดูแล้ว ถือว่าอ่านหมดแล้ว
+
+    unreadNotificationCount = 0;
+
+    updateBellBadge();
+
+}
+
+
+function closeNotificationPanel() {
+
+    const panel =
+        document.getElementById(
+            "notif-panel"
+        );
+
+
+    if (panel) {
+
+        panel.style.display =
+            "none";
+
+    }
+
+}
+
+
+// ---------------- ฟังก์ชันหลักที่ส่วนอื่นของโค้ดเรียกใช้ ----------------
+
+function showNotification(message) {
+
+    const timestamp =
+        Date.now();
+
+    const type =
+        getNotificationType(message);
+
+
+    // 1) บันทึกลงประวัติ (ใหม่สุดอยู่ต้น)
+
+    notificationHistory.unshift({
+
+        message: message,
+
+        type: type,
+
+        timestamp: timestamp
+
+    });
+
+
+    if (
+        notificationHistory.length >
+        NOTIFICATION_HISTORY_LIMIT
+    ) {
+
+        notificationHistory.length =
+            NOTIFICATION_HISTORY_LIMIT;
+
+    }
+
+
+    saveNotificationHistory();
+
+
+    // 2) อัปเดตกระดิ่ง / แผงประวัติ
+
+    if (isNotificationPanelOpen()) {
+
+        renderNotificationHistory();
+
+    } else {
+
+        unreadNotificationCount++;
+
+        updateBellBadge();
+
+    }
+
+
+    // 3) เด้ง toast ค้างไว้จนกว่าจะกดปิด
+
+    createToast(
+        message,
+        type,
+        timestamp
+    );
 
 
     console.log(
@@ -181,28 +564,107 @@ function processNotificationQueue() {
         message
     );
 
-
-    // แสดง Notification 3 วินาที
-
-    setTimeout(() => {
-
-        notification.style.display =
-            "none";
+}
 
 
-        notificationShowing =
-            false;
+// ---------------- ผูกปุ่มต่างๆ ----------------
+
+const bellButton =
+    document.getElementById("bell-btn");
+
+const notifPanelElement =
+    document.getElementById("notif-panel");
+
+const notifCloseButton =
+    document.getElementById("notif-close-btn");
+
+const notifClearButton =
+    document.getElementById("notif-clear-btn");
 
 
-        // ถ้ามี Notification ต่อไป
-        // ให้แสดงต่อ
+if (bellButton) {
 
-        processNotificationQueue();
+    bellButton.addEventListener(
+        "click",
+        () => {
 
+            if (isNotificationPanelOpen()) {
 
-    }, 3000);
+                closeNotificationPanel();
+
+            } else {
+
+                openNotificationPanel();
+
+            }
+
+        }
+    );
 
 }
+
+
+if (notifCloseButton) {
+
+    notifCloseButton.addEventListener(
+        "click",
+        closeNotificationPanel
+    );
+
+}
+
+
+if (notifClearButton) {
+
+    notifClearButton.addEventListener(
+        "click",
+        () => {
+
+            notificationHistory = [];
+
+            saveNotificationHistory();
+
+            renderNotificationHistory();
+
+        }
+    );
+
+}
+
+
+// คลิกนอกแผง = ปิดแผง
+
+document.addEventListener(
+    "click",
+    (event) => {
+
+        if (!isNotificationPanelOpen()) {
+
+            return;
+
+        }
+
+
+        const clickedInsidePanel =
+            notifPanelElement &&
+            notifPanelElement.contains(event.target);
+
+        const clickedBell =
+            bellButton &&
+            bellButton.contains(event.target);
+
+
+        if (
+            !clickedInsidePanel &&
+            !clickedBell
+        ) {
+
+            closeNotificationPanel();
+
+        }
+
+    }
+);
 
 
 // ============================================================
