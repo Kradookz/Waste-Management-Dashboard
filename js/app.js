@@ -79,7 +79,7 @@ let bin2OnlineStatus = "online";
 // ถ้าไม่มีข้อมูลใหม่เข้ามานานเกินนี้ ถือว่าถังนั้นออฟไลน์
 // ปรับตามรอบส่งข้อมูลจริงของ ESP32 (แนะนำ 2-3 เท่าของรอบส่งปกติ)
 
-const OFFLINE_THRESHOLD_MS = 20 * 1000; // 20 วินาที (ชั่วคราว)
+const OFFLINE_THRESHOLD_MS = 30 * 60 * 1000; // 30 นาที (2 เท่าของรอบส่ง 15 นาที)
 
 
 // ============================================================
@@ -759,6 +759,19 @@ function updateBin1OnlineBadge() {
     }
 
 
+    // ยังไม่เคยได้รับข้อมูลจากถังนี้เลย (เช่น ยังไม่มีฮาร์ดแวร์)
+    // ไม่ถือว่า Offline และไม่แจ้งเตือน แค่โชว์ว่าไม่มีข้อมูล
+
+    if (!bin1LastSeen) {
+
+        bin1OnlineElement.textContent = "⚪ No data";
+        bin1OnlineElement.className = "online-status nodata";
+
+        return;
+
+    }
+
+
     const isOnline =
         checkOnline(bin1LastSeen);
 
@@ -812,6 +825,19 @@ function updateBin2OnlineBadge() {
     }
 
 
+    // ยังไม่เคยได้รับข้อมูลจากถังนี้เลย (เช่น ยังไม่มีฮาร์ดแวร์)
+    // ไม่ถือว่า Offline และไม่แจ้งเตือน แค่โชว์ว่าไม่มีข้อมูล
+
+    if (!bin2LastSeen) {
+
+        bin2OnlineElement.textContent = "⚪ No data";
+        bin2OnlineElement.className = "online-status nodata";
+
+        return;
+
+    }
+
+
     const isOnline =
         checkOnline(bin2LastSeen);
 
@@ -854,19 +880,164 @@ function updateBin2OnlineBadge() {
 
 
 // ============================================================
-// CHART HISTORY
+// OVERVIEW: ONLINE COUNT (NEW)
 // ============================================================
+// แยกเป็นฟังก์ชันเพื่อให้ setInterval เรียกได้ด้วย
+// (ถ้านับเฉพาะตอนมีข้อมูลใหม่ ตัวเลข Online จะค้าง เพราะถังที่หลุด
+// ไม่ส่งข้อมูลมาให้ทริกเกอร์ onValue)
 
-const chartLabels = [];
+function updateOnlineCount() {
 
-const bin1History = [];
+    const onlineElement =
+        document.getElementById("online-bins");
 
-const bin2History = [];
+    if (!onlineElement) {
+
+        return;
+
+    }
+
+
+    let onlineBins = 0;
+
+    if (checkOnline(bin1LastSeen)) {
+
+        onlineBins++;
+
+    }
+
+    if (checkOnline(bin2LastSeen)) {
+
+        onlineBins++;
+
+    }
+
+
+    onlineElement.textContent = onlineBins;
+
+}
+
+
+// ============================================================
+// LAST UPDATE (NEW)
+// ============================================================
+// โชว์เวลาที่ถัง "ส่งข้อมูลล่าสุดจริงๆ" (lastSeen ล่าสุดของทุกถัง)
+// ไม่ใช่เวลาที่เปิดหน้าเว็บ/เวลาที่เบราว์เซอร์รับข้อมูล
+
+function updateLastUpdate() {
+
+    const dateElement =
+        document.getElementById("update-date");
+
+    const timeElement =
+        document.getElementById("update-time");
+
+    if (!dateElement || !timeElement) {
+
+        return;
+
+    }
+
+
+    const latest =
+        Math.max(
+            bin1LastSeen || 0,
+            bin2LastSeen || 0
+        );
+
+
+    if (!latest) {
+
+        dateElement.textContent = "--";
+
+        timeElement.textContent = "--";
+
+        return;
+
+    }
+
+
+    const lastDate =
+        new Date(latest);
+
+
+    dateElement.textContent =
+        lastDate.toLocaleDateString(
+            "en-GB",
+            {
+
+                day: "2-digit",
+
+                month: "long",
+
+                year: "numeric"
+
+            }
+        );
+
+
+    timeElement.textContent =
+        lastDate.toLocaleTimeString(
+            "en-GB",
+            {
+
+                hour: "2-digit",
+
+                minute: "2-digit",
+
+                second: "2-digit",
+
+                hour12: false
+
+            }
+        );
+
+}
 
 
 // ============================================================
 // CHART
 // ============================================================
+// ดึงประวัติจาก Firebase (/history/binX) มาวาด ไม่เก็บจุดไว้ใน
+// หน่วยความจำของหน้าเว็บอีกแล้ว ปิดแท็บ/รีเฟรช/เปิดเครื่องอื่น
+// ก็เห็นกราฟย้อนหลังเหมือนกันหมด
+
+// แสดงย้อนหลังกี่จุด (ESP32 ส่งทุก 15 นาที = 96 จุด/วัน)
+// 192 จุด = ย้อนหลังประมาณ 2 วัน ปรับเลขนี้ได้ตามต้องการ
+
+const CHART_MAX_POINTS = 192;
+
+
+function formatChartTime(timestamp, withYear) {
+
+    const options = {
+
+        day: "2-digit",
+
+        month: "2-digit",
+
+        hour: "2-digit",
+
+        minute: "2-digit",
+
+        hour12: false
+
+    };
+
+
+    if (withYear) {
+
+        options.year = "numeric";
+
+    }
+
+
+    return new Date(timestamp)
+        .toLocaleString("en-GB", options)
+        .replace(",", "");
+
+}
+
 
 const ctx =
     document.getElementById(
@@ -883,9 +1054,6 @@ const wasteChart =
 
             data: {
 
-                labels:
-                    chartLabels,
-
                 datasets: [
 
                     {
@@ -893,7 +1061,7 @@ const wasteChart =
                             "Bin 1",
 
                         data:
-                            bin1History,
+                            [],
 
                         borderColor:
                             "#2E86DE",
@@ -904,6 +1072,9 @@ const wasteChart =
                         borderDash:
                             [6, 4],
 
+                        pointRadius:
+                            2,
+
                         tension:
                             0
                     },
@@ -913,13 +1084,16 @@ const wasteChart =
                             "Bin 2",
 
                         data:
-                            bin2History,
+                            [],
 
                         borderColor:
                             "#E67E22",
 
                         backgroundColor:
                             "#E67E22",
+
+                        pointRadius:
+                            2,
 
                         tension:
                             0
@@ -934,6 +1108,19 @@ const wasteChart =
                 responsive:
                     true,
 
+                interaction: {
+
+                    mode:
+                        "nearest",
+
+                    axis:
+                        "x",
+
+                    intersect:
+                        false
+
+                },
+
                 plugins: {
 
                     legend: {
@@ -941,11 +1128,95 @@ const wasteChart =
                         position:
                             "top"
 
+                    },
+
+                    tooltip: {
+
+                        callbacks: {
+
+                            title: (items) =>
+                                formatChartTime(
+                                    items[0].parsed.x,
+                                    true
+                                )
+
+                        }
+
                     }
 
                 },
 
                 scales: {
+
+                    x: {
+
+                        // แกนเวลาแบบตัวเลข (ms) ให้สองถังที่ส่งข้อมูลคนละเวลา
+                        // วาดบนแกนเดียวกันได้ ไม่ต้องใช้ไลบรารีเสริม
+
+                        type:
+                            "linear",
+
+                        // ให้แกนยาวพอดีกับช่วงข้อมูลจริง ไม่เว้นที่ว่างสองข้าง
+
+                        bounds:
+                            "data",
+
+                        // สร้างขีดแบ่งเองให้ตรงชั่วโมงเต็มตามเวลาท้องถิ่น
+                        // (00:00, 06:00, 12:00 ...) อ่านง่ายกว่าเวลาเศษๆ
+
+                        afterBuildTicks: (scale) => {
+
+                            const HOUR =
+                                60 * 60 * 1000;
+
+                            const range =
+                                scale.max - scale.min;
+
+                            const step =
+                                [1, 2, 3, 6, 12, 24, 48]
+                                    .map((h) => h * HOUR)
+                                    .find((s) => range / s <= 9) ||
+                                48 * HOUR;
+
+                            // ชดเชย timezone เพื่อให้ตรงชั่วโมงเต็มของเครื่องผู้ใช้
+
+                            const offset =
+                                new Date(scale.min).getTimezoneOffset() *
+                                60 * 1000;
+
+                            const first =
+                                Math.ceil((scale.min - offset) / step) *
+                                step + offset;
+
+                            const ticks = [];
+
+                            for (let t = first; t <= scale.max; t += step) {
+
+                                ticks.push({ value: t });
+
+                            }
+
+                            // ถ้าข้อมูลน้อยจนได้ขีดไม่ถึง 2 อัน ใช้ค่าอัตโนมัติเดิม
+
+                            if (ticks.length >= 2) {
+
+                                scale.ticks = ticks;
+
+                            }
+
+                        },
+
+                        ticks: {
+
+                            callback: (value) =>
+                                formatChartTime(
+                                    value,
+                                    false
+                                )
+
+                        }
+
+                    },
 
                     y: {
 
@@ -963,6 +1234,69 @@ const wasteChart =
 
         }
     );
+
+
+// แปลงข้อมูล /history เป็นจุดบนกราฟ
+// ข้ามรอบที่เซนเซอร์วัดพลาด (sensorError / fillLevel = -1)
+// ไม่งั้นกราฟจะดิ่งลง 0% ทั้งที่ขยะไม่ได้หายไปไหน
+
+function updateChartFromHistory(datasetIndex, historyData) {
+
+    const points =
+        Object.values(historyData || {})
+
+            .filter((entry) =>
+
+                entry &&
+                !entry.sensorError &&
+                Number(entry.fillLevel) >= 0 &&
+                Number(entry.timestamp) > 0
+
+            )
+
+            .map((entry) => ({
+
+                x: Number(entry.timestamp),
+
+                y: Number(entry.fillLevel)
+
+            }))
+
+            .sort((a, b) => a.x - b.x);
+
+
+    wasteChart.data.datasets[datasetIndex].data =
+        points;
+
+    wasteChart.update();
+
+}
+
+
+// เรียงตาม key (push ID ของ Firebase เรียงตามเวลาสร้างอยู่แล้ว)
+// เลยไม่ต้องตั้ง index เพิ่มใน Firebase Rules
+
+["bin1", "bin2"].forEach((binKey, index) => {
+
+    onValue(
+
+        query(
+            ref(db, "history/" + binKey),
+            limitToLast(CHART_MAX_POINTS)
+        ),
+
+        (snapshot) => {
+
+            updateChartFromHistory(
+                index,
+                snapshot.val()
+            );
+
+        }
+
+    );
+
+});
 
 
 // ============================================================
@@ -1699,10 +2033,6 @@ onValue(
             0;
 
 
-        let onlineBins =
-            0;
-
-
         // ================= Bin 1 =================
 
         if (bin1) {
@@ -1727,17 +2057,6 @@ onValue(
             ) {
 
                 warningBins++;
-
-            }
-
-
-            // นับ online จากผล lastSeen จริง ไม่ใช่ field online เดิม
-
-            if (
-                checkOnline(bin1LastSeen)
-            ) {
-
-                onlineBins++;
 
             }
 
@@ -1771,17 +2090,6 @@ onValue(
 
             }
 
-
-            // นับ online จากผล lastSeen จริง ไม่ใช่ field online เดิม
-
-            if (
-                checkOnline(bin2LastSeen)
-            ) {
-
-                onlineBins++;
-
-            }
-
         }
 
 
@@ -1805,119 +2113,16 @@ onValue(
             warningBins;
 
 
-        document.getElementById(
-            "online-bins"
-        ).textContent =
-            onlineBins;
+        updateOnlineCount();
 
 
         // ====================================================
         // LAST UPDATE
         // ====================================================
 
-        const now =
-            new Date();
+        updateLastUpdate();
 
 
-        document.getElementById(
-            "update-date"
-        ).textContent =
-            now.toLocaleDateString(
-                "en-GB",
-                {
-
-                    day:
-                        "2-digit",
-
-                    month:
-                        "long",
-
-                    year:
-                        "numeric"
-
-                }
-            );
-
-
-        document.getElementById(
-            "update-time"
-        ).textContent =
-            now.toLocaleTimeString(
-                "en-GB",
-                {
-
-                    hour:
-                        "2-digit",
-
-                    minute:
-                        "2-digit",
-
-                    second:
-                        "2-digit",
-
-                    hour12:
-                        false
-
-                }
-            );
-
-
-        // ====================================================
-        // UPDATE CHART
-        // ====================================================
-
-        const currentTime =
-            new Date().toLocaleTimeString(
-                [],
-                {
-
-                    hour:
-                        "2-digit",
-
-                    minute:
-                        "2-digit"
-
-                }
-            );
-
-
-        chartLabels.push(
-            currentTime
-        );
-
-
-        // ถ้าไม่มี Bin ให้ใส่ null
-
-        bin1History.push(
-            bin1
-                ? Number(bin1.level)
-                : null
-        );
-
-
-        bin2History.push(
-            bin2
-                ? Number(bin2.level)
-                : null
-        );
-
-
-        // เก็บแค่ 20 จุดล่าสุด
-
-        if (
-            chartLabels.length > 20
-        ) {
-
-            chartLabels.shift();
-
-            bin1History.shift();
-
-            bin2History.shift();
-
-        }
-
-
-        wasteChart.update();
 
     }
 
@@ -1936,6 +2141,8 @@ setInterval(() => {
     updateBin1OnlineBadge();
 
     updateBin2OnlineBadge();
+
+    updateOnlineCount();
 
 }, 60 * 1000);
 
@@ -2036,10 +2243,24 @@ onValue(
                     : entry.fillLevel + "%";
 
 
-            row.innerHTML =
-                "<td>" + formatTimestamp(entry.timestamp) + "</td>" +
-                "<td>" + fillLevelText + "</td>" +
-                "<td>" + entry.batteryPercent + "%</td>";
+            // ใช้ textContent ไม่ใช้ innerHTML กันโค้ดแปลกปลอม (XSS)
+            // เผื่อมีคนเขียนข้อมูลมั่วเข้า Firebase ได้
+
+            [
+                formatTimestamp(entry.timestamp),
+                fillLevelText,
+                entry.batteryPercent + "%"
+            ].forEach((cellText) => {
+
+                const cell =
+                    document.createElement("td");
+
+                cell.textContent =
+                    cellText;
+
+                row.appendChild(cell);
+
+            });
 
 
             tableBody.appendChild(row);
