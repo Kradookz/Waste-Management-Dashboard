@@ -19,8 +19,8 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <!-- NEW: ชั่วคราวสำหรับส่วน History เนื่องจากไม่มีไฟล์ css/style.css ให้แก้ตรง
-         ย้ายไปใส่ใน css/style.css แทนได้ภายหลังให้เข้าธีมเดิม -->
+    <!-- Inline CSS สำหรับส่วน History / ระบบแจ้งเตือน / สถานะ No data
+         (ย้ายไปรวมใน css/style.css ได้ภายหลัง) -->
     <style>
         .history-section {
             margin: 24px 0;
@@ -29,7 +29,19 @@
         .history-controls {
             display: flex;
             justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
             margin-bottom: 12px;
+        }
+
+        #history-bin-select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            cursor: pointer;
         }
 
         #download-csv-btn {
@@ -76,6 +88,11 @@
         #history-table tr:hover {
             background: #fafafa;
         }
+        /* สถานะ "ยังไม่มีข้อมูล" ของถังที่ไม่เคยส่งข้อมูลมา */
+        .online-status.nodata {
+            color: #888;
+        }
+
         /* ===== Notification: bell / toast / history panel ===== */
 
         .bell-btn {
@@ -352,7 +369,7 @@
 
         <div class="card">
             <h3>Online</h3>
-            <p id="online-bins">2</p>
+            <p id="online-bins">--</p>
         </div>
 
     </div>
@@ -377,18 +394,18 @@
 
     <div class="progress-bar">
 
-        <div id="bin1-progress" class="progress" style="width:35%;"></div>
+        <div id="bin1-progress" class="progress" style="width:0%;"></div>
 
     </div>
 
-    <p id="bin1-percentage" class="percentage">35%</p>
+    <p id="bin1-percentage" class="percentage">--</p>
 
     <span id="bin1-status" class="status"></span>
 
     <br>
 
-    <span id="bin1-online" class="online-status">
-        🟢 Online
+    <span id="bin1-online" class="online-status nodata">
+        ⚪ No data
     </span>
 
     </div>
@@ -403,18 +420,18 @@
 
     <div class="progress-bar">
 
-        <div id="bin2-progress" class="progress" style="width:82%;"></div>
+        <div id="bin2-progress" class="progress" style="width:0%;"></div>
 
     </div>
 
-    <p id="bin2-percentage" class="percentage">82%</p>
+    <p id="bin2-percentage" class="percentage">--</p>
 
     <span id="bin2-status" class="status"></span>
 
     <br>
 
-    <span id="bin2-online" class="online-status">
-        🟢 Online
+    <span id="bin2-online" class="online-status nodata">
+        ⚪ No data
     </span>
 
     </div>
@@ -441,7 +458,7 @@
                     <h3>🔋 Bin 1 Battery</h3>
 
                     <p id="battery1-status" class="battery-status">
-                        🟢 Good
+                        ⚪ No data
                     </p>
                 </div>
 
@@ -483,7 +500,7 @@
                     <h3>🔋 Bin 2 Battery</h3>
 
                     <p id="battery2-status" class="battery-status">
-                        🟢 Good
+                        ⚪ No data
                     </p>
                 </div>
 
@@ -543,11 +560,11 @@
         <div class="update-info">
 
             <h3 id="update-date">
-                23 July 2026
+                --
             </h3>
 
             <p id="update-time">
-                13:45:20
+                --
             </p>
 
         </div>
@@ -560,9 +577,14 @@
 
     <section class="history-section">
 
-        <h2>Historical Data (Bin 1)</h2>
+        <h2>Historical Data</h2>
 
         <div class="history-controls">
+
+            <select id="history-bin-select" aria-label="เลือกถัง">
+                <option value="bin1">Bin 1</option>
+                <option value="bin2">Bin 2</option>
+            </select>
 
             <button id="download-csv-btn">📥 Download CSV</button>
 
