@@ -2159,22 +2159,28 @@ function formatTimestamp(ts) {
         new Date(ts);
 
 
-    return date.toLocaleString(
-        "en-GB",
-        {
+    // en-GB ใส่เครื่องหมายจุลภาคคั่นวันกับเวลา ("14/10/2025, 00:00")
+    // ถ้าปล่อยไว้ ไฟล์ CSV จะแตกเป็น 6 คอลัมน์ ไม่ตรงหัวตาราง 5 คอลัมน์
+    // จึงตัดทิ้งตั้งแต่ตรงนี้ (ใช้ทั้งในตารางและในไฟล์ CSV)
 
-            day: "2-digit",
+    return date
+        .toLocaleString(
+            "en-GB",
+            {
 
-            month: "2-digit",
+                day: "2-digit",
 
-            year: "numeric",
+                month: "2-digit",
 
-            hour: "2-digit",
+                year: "numeric",
 
-            minute: "2-digit"
+                hour: "2-digit",
 
-        }
-    );
+                minute: "2-digit"
+
+            }
+        )
+        .replace(",", "");
 
 }
 
@@ -2182,93 +2188,179 @@ function formatTimestamp(ts) {
 // แสดงแค่ 100 รายการล่าสุดในตาราง (กันหน้าเว็บช้าถ้าข้อมูลสะสมเยอะ)
 // ปุ่มดาวน์โหลด CSV ด้านล่างจะดึงข้อมูลทั้งหมดแยกต่างหาก ไม่ถูกจำกัดแบบนี้
 
-const historyQuery =
-    query(
-        ref(db, "history/bin1"),
-        orderByChild("timestamp"),
-        limitToLast(100)
-    );
+// ตารางนี้สลับดูได้ทีละถัง (เลือกจากเมนู Bin 1 / Bin 2)
+
+let unsubscribeHistoryTable = null;
 
 
-onValue(
+function renderHistoryTable(snapshot) {
 
-    historyQuery,
-
-    (snapshot) => {
-
-        const historyData =
-            snapshot.val();
+    const historyData =
+        snapshot.val();
 
 
-        const tableBody =
-            document.getElementById(
-                "history-table-body"
-            );
+    const tableBody =
+        document.getElementById(
+            "history-table-body"
+        );
 
 
-        if (!tableBody) {
+    if (!tableBody) {
 
-            return;
-
-        }
-
-
-        tableBody.innerHTML = "";
-
-
-        if (!historyData) {
-
-            return;
-
-        }
-
-
-        // แปลง object เป็น array แล้วเรียงล่าสุดขึ้นก่อน
-
-        const entries =
-            Object.values(historyData).sort(
-                (a, b) => b.timestamp - a.timestamp
-            );
-
-
-        entries.forEach((entry) => {
-
-            const row =
-                document.createElement("tr");
-
-
-            const fillLevelText =
-                entry.sensorError
-                    ? "⚠️ Sensor Error"
-                    : entry.fillLevel + "%";
-
-
-            // ใช้ textContent ไม่ใช้ innerHTML กันโค้ดแปลกปลอม (XSS)
-            // เผื่อมีคนเขียนข้อมูลมั่วเข้า Firebase ได้
-
-            [
-                formatTimestamp(entry.timestamp),
-                fillLevelText,
-                entry.batteryPercent + "%"
-            ].forEach((cellText) => {
-
-                const cell =
-                    document.createElement("td");
-
-                cell.textContent =
-                    cellText;
-
-                row.appendChild(cell);
-
-            });
-
-
-            tableBody.appendChild(row);
-
-        });
+        return;
 
     }
 
+
+    tableBody.innerHTML = "";
+
+
+    if (!historyData) {
+
+        const emptyRow =
+            document.createElement("tr");
+
+        const emptyCell =
+            document.createElement("td");
+
+        emptyCell.colSpan = 3;
+
+        emptyCell.textContent =
+            "ยังไม่มีข้อมูล";
+
+        emptyRow.appendChild(emptyCell);
+
+        tableBody.appendChild(emptyRow);
+
+        return;
+
+    }
+
+
+    // แปลง object เป็น array แล้วเรียงล่าสุดขึ้นก่อน
+
+    const entries =
+        Object.values(historyData).sort(
+            (a, b) => b.timestamp - a.timestamp
+        );
+
+
+    entries.forEach((entry) => {
+
+        const row =
+            document.createElement("tr");
+
+
+        const fillLevelText =
+            entry.sensorError
+                ? "⚠️ Sensor Error"
+                : entry.fillLevel + "%";
+
+
+        // ใช้ textContent ไม่ใช้ innerHTML กันโค้ดแปลกปลอม (XSS)
+        // เผื่อมีคนเขียนข้อมูลมั่วเข้า Firebase ได้
+
+        [
+            formatTimestamp(entry.timestamp),
+            fillLevelText,
+            entry.batteryPercent + "%"
+        ].forEach((cellText) => {
+
+            const cell =
+                document.createElement("td");
+
+            cell.textContent =
+                cellText;
+
+            row.appendChild(cell);
+
+        });
+
+
+        tableBody.appendChild(row);
+
+    });
+
+}
+
+
+function subscribeHistoryTable(binKey) {
+
+    // เลิกฟังถังเดิมก่อน ไม่งั้นข้อมูลของสองถังจะมาปนกันในตาราง
+
+    if (unsubscribeHistoryTable) {
+
+        unsubscribeHistoryTable();
+
+        unsubscribeHistoryTable = null;
+
+    }
+
+
+    const tableBody =
+        document.getElementById(
+            "history-table-body"
+        );
+
+    if (tableBody) {
+
+        tableBody.innerHTML = "";
+
+    }
+
+
+    const historyQuery =
+        query(
+            ref(db, "history/" + binKey),
+            orderByChild("timestamp"),
+            limitToLast(100)
+        );
+
+
+    unsubscribeHistoryTable =
+        onValue(
+            historyQuery,
+            renderHistoryTable
+        );
+
+}
+
+
+function getSelectedHistoryBin() {
+
+    const select =
+        document.getElementById(
+            "history-bin-select"
+        );
+
+    return select ? select.value : "bin1";
+
+}
+
+
+const historyBinSelect =
+    document.getElementById(
+        "history-bin-select"
+    );
+
+if (historyBinSelect) {
+
+    historyBinSelect.addEventListener(
+        "change",
+        () => {
+
+            subscribeHistoryTable(
+                historyBinSelect.value
+            );
+
+        }
+    );
+
+}
+
+
+subscribeHistoryTable(
+    getSelectedHistoryBin()
 );
 
 
@@ -2280,8 +2372,14 @@ onValue(
 
 function downloadCSV() {
 
+    // ดาวน์โหลดตามถังที่เลือกในตาราง (เลือก Bin 2 ต้องได้ไฟล์ Bin 2)
+
+    const binKey =
+        getSelectedHistoryBin();
+
+
     get(
-        ref(db, "history/bin1")
+        ref(db, "history/" + binKey)
     ).then((snapshot) => {
 
         const historyData =
@@ -2290,7 +2388,7 @@ function downloadCSV() {
 
         if (!historyData) {
 
-            alert("ยังไม่มีข้อมูลย้อนหลัง");
+            alert("ยังไม่มีข้อมูลย้อนหลังของ " + binKey.replace("bin", "Bin "));
 
             return;
 
@@ -2338,7 +2436,7 @@ function downloadCSV() {
         link.href = url;
 
         link.download =
-            "bin1_history_" + Date.now() + ".csv";
+            binKey + "_history_" + Date.now() + ".csv";
 
 
         link.click();
